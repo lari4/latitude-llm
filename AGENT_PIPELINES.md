@@ -294,3 +294,438 @@ Safety Scorer: {
 ```
 
 ---
+
+## Пайплайн поддержки клиентов
+
+### Общее описание
+
+Интеллектуальная система для автоматизации обработки запросов клиентов. Координатор анализирует входящие запросы, определяет необходимость дополнительной информации, делегирует исследование информации о клиенте специализированному агенту, затем передает данные агенту-составителю email для создания персонализированного ответа.
+
+### Схема пайплайна
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    CUSTOMER SUPPORT EMAIL PIPELINE                       │
+└─────────────────────────────────────────────────────────────────────────┘
+
+                        ┌─────────────────────┐
+                        │  CUSTOMER QUERY     │
+                        │  + Email            │
+                        │  + Priority Level   │
+                        └──────────┬──────────┘
+                                   │
+                     ┌─────────────▼──────────────┐
+                     │  Main Coordinator          │
+                     │  (Google Gemini Flash)     │
+                     │  Temperature: 0.3          │
+                     │                            │
+                     │  STEP 1: Analyze Query     │
+                     └─────────────┬──────────────┘
+                                   │
+                ┌──────────────────┼──────────────────┐
+                │                  │                  │
+    ┌───────────▼────────┐  ┌──────▼──────┐  ┌──────▼──────────┐
+    │ get_customer_      │  │ get_order_  │  │ check_known_    │
+    │ details()          │  │ history()   │  │ issues()        │
+    └───────────┬────────┘  └──────┬──────┘  └──────┬──────────┘
+                │                  │                 │
+                └──────────────────┼─────────────────┘
+                                   │
+                     ┌─────────────▼──────────────┐
+                     │                            │
+                     │  NEEDS CLARIFICATION?      │
+                     │                            │
+                     └───┬─────────────────┬──────┘
+                         │ YES             │ NO
+                         │                 │
+            ┌────────────▼────┐           │
+            │  RETURN         │           │
+            │  {               │           │
+            │  needs_clarif... │           │
+            │  questions: [...]}          │
+            └─────────────────┘           │
+                                          │
+                             ┌────────────▼──────────────┐
+                             │  STEP 2:                  │
+                             │  Customer Researcher      │
+                             │  (OpenAI GPT-4.1)         │
+                             │                           │
+                             │  6-STEP RESEARCH:         │
+                             │  1. Extract identifiers   │
+                             │  2. Gather details        │
+                             │  3. Check issues          │
+                             │  4. Previous interactions │
+                             │  5. Subscription level    │
+                             │  6. Special circumstances │
+                             └────────────┬──────────────┘
+                                          │
+                             ┌────────────▼──────────────┐
+                             │  RESEARCH REPORT          │
+                             │                           │
+                             │  • Customer profile       │
+                             │  • Account status         │
+                             │  • Order/subscription     │
+                             │  • Known issues           │
+                             │  • Red flags              │
+                             │  • Recommendations        │
+                             └────────────┬──────────────┘
+                                          │
+                             ┌────────────▼──────────────┐
+                             │  STEP 3:                  │
+                             │  Email Composer           │
+                             │  (Anthropic Claude)       │
+                             │  Temperature: 0.4         │
+                             │                           │
+                             │  PROCESS:                 │
+                             │  1. Analyze emotion       │
+                             │  2. Personalize           │
+                             │  3. Address issue         │
+                             │  4. Set expectations      │
+                             │  5. Add next steps        │
+                             └────────────┬──────────────┘
+                                          │
+                             ┌────────────▼──────────────┐
+                             │  FINAL EMAIL RESPONSE     │
+                             │                           │
+                             │  {                        │
+                             │    subject: "...",        │
+                             │    body: "...",           │
+                             │    tone_analysis: "...",  │
+                             │    personalization: [...] │
+                             │  }                        │
+                             └───────────────────────────┘
+```
+
+### Потоки данных
+
+#### 1. Входные данные
+
+```javascript
+{
+  customer_email: string,      // Email клиента
+  customer_query: string,      // Запрос клиента
+  priority_level: string       // Уровень приоритета (low, medium, high, urgent)
+}
+```
+
+#### 2. Main Coordinator → Tools
+
+**Вызовы инструментов:**
+
+```javascript
+// Получение деталей клиента
+get_customer_details({ email: customer_email })
+→ {
+  customer_id: string,
+  name: string,
+  account_type: "free" | "premium" | "enterprise",
+  created_at: date,
+  status: "active" | "suspended" | "trial"
+}
+
+// Получение истории заказов
+get_order_history({ customer_id: string })
+→ {
+  orders: [{
+    order_id: string,
+    date: date,
+    amount: number,
+    status: "completed" | "pending" | "refunded",
+    items: [...]
+  }]
+}
+
+// Проверка известных проблем
+check_known_issues({ issue_keywords: string[] })
+→ {
+  known_issues: [{
+    issue_id: string,
+    description: string,
+    status: "open" | "resolved" | "investigating",
+    workaround: string
+  }]
+}
+```
+
+#### 3. Main Coordinator → Customer Researcher
+
+**Промпт Customer Researcher получает:**
+```javascript
+{
+  research_request: string  // Включает контекст и конкретные вопросы для исследования
+}
+```
+
+**Возвращает детальный отчет:**
+```javascript
+{
+  customer_profile: {
+    name: string,
+    email: string,
+    account_type: string,
+    tenure: string,           // Как долго клиент с нами
+    lifetime_value: number
+  },
+  account_status: {
+    current_status: string,
+    recent_activity: string,
+    payment_status: string
+  },
+  order_subscription_history: [{
+    type: "order" | "subscription",
+    date: date,
+    details: string,
+    issues: string[]
+  }],
+  known_related_issues: [{
+    issue: string,
+    relevance: string,
+    status: string,
+    solution: string
+  }],
+  previous_interactions: [{
+    date: date,
+    type: "email" | "chat" | "phone",
+    summary: string,
+    resolution: string
+  }],
+  special_circumstances: {
+    is_vip: boolean,
+    recent_issues_count: number,
+    escalation_history: string[],
+    notes: string
+  },
+  recommended_approach: string,  // Как лучше обработать этот запрос
+  red_flags: string[]            // Потенциальные проблемы
+}
+```
+
+**6-шаговый процесс исследования:**
+1. Извлечение email клиента и идентификаторов
+2. Сбор деталей аккаунта и истории
+3. Проверка известных проблем
+4. Поиск предыдущих взаимодействий
+5. Определение уровня подписки
+6. Отметка особых обстоятельств (VIP, недавние проблемы)
+
+#### 4. Customer Researcher → Email Composer
+
+**Промпт Email Composer получает:**
+```javascript
+{
+  customer_info: string,     // Отформатированная информация о клиенте
+  issue_details: string,     // Детали проблемы из исследования
+  tone_required: string      // "standard" | "urgent" | "empathetic" | "technical"
+}
+```
+
+**Возвращает:**
+```javascript
+{
+  subject: string,                // Профессиональная тема письма
+  body: string,                   // Полное тело письма с форматированием
+  tone_analysis: string,          // Анализ используемого тона
+  personalization_elements: [     // Элементы персонализации
+    "Used customer name",
+    "Referenced order #12345",
+    "Acknowledged account anniversary"
+  ]
+}
+```
+
+**Процесс создания email:**
+1. Анализ эмоционального состояния клиента (frustrated/confused/satisfied)
+2. Использование информации о клиенте для персонализации
+3. Решение конкретной проблемы с четкими действиями
+4. Включение релевантных деталей аккаунта
+5. Установка ожиданий по срокам решения
+6. Завершение следующими шагами и контактной информацией
+
+#### 5. Логика определения тона
+
+```
+IF priority_level == "urgent" OR customer_history.recent_issues_count > 2:
+  tone = "empathetic"
+
+ELSE IF issue_type == "technical" OR customer.account_type == "enterprise":
+  tone = "technical"
+
+ELSE IF priority_level == "high":
+  tone = "urgent"
+
+ELSE:
+  tone = "standard"
+```
+
+### Варианты обработки по типу запроса
+
+#### A. Разгневанный клиент
+
+```
+Input: "This is the third time I'm contacting support! Nothing works!"
+
+Flow:
+1. Coordinator detects frustration in sentiment analysis
+2. Customer Researcher finds 3 previous tickets
+3. Tone set to "empathetic"
+4. Email Composer creates response with:
+   - Sincere apology
+   - Acknowledgment of frustration
+   - Immediate action plan
+   - Direct contact to support manager
+   - Compensation offer (if applicable)
+```
+
+#### B. Технический запрос
+
+```
+Input: "Getting 500 error when calling /api/users endpoint with OAuth token"
+
+Flow:
+1. Coordinator identifies technical nature
+2. Customer Researcher checks:
+   - API usage history
+   - Known API issues
+   - Account API limits
+3. Tone set to "technical"
+4. Email Composer creates response with:
+   - Technical analysis of issue
+   - Step-by-step debugging guide
+   - Code examples
+   - API documentation links
+   - Direct line to technical support
+```
+
+#### C. Вопрос по оплате
+
+```
+Input: "Why was I charged twice for my subscription?"
+
+Flow:
+1. Coordinator triggers billing inquiry path
+2. Customer Researcher verifies:
+   - Payment history with get_order_history()
+   - Subscription details
+   - Recent charge patterns
+3. Tone set to "standard" with extra precision
+4. Email Composer creates response with:
+   - Exact charge breakdown
+   - Clear explanation of charges
+   - Refund process (if duplicate found)
+   - Updated payment schedule
+   - Billing contact information
+```
+
+### Конфигурация моделей
+
+| Компонент | Провайдер | Модель | Temperature | Причина выбора |
+|-----------|-----------|--------|-------------|----------------|
+| Main Coordinator | Google | gemini-1.5-flash | 0.3 | Быстрый анализ и маршрутизация запросов |
+| Customer Researcher | OpenAI | gpt-4.1 | default | Глубокое исследование и синтез информации |
+| Email Composer | Anthropic | claude-3-sonnet | 0.4 | Эмпатичное и естественное написание текста |
+
+### Пример полного выполнения
+
+```
+=== ВХОД ===
+customer_email: "john@example.com"
+customer_query: "I ordered Premium plan 3 days ago but still don't have access"
+priority_level: "medium"
+
+=== ШАГ 1: КООРДИНАТОР АНАЛИЗИРУЕТ ===
+- Sentiment: Frustrated but polite
+- Issue type: Access/provisioning
+- Urgency: Medium-high (3 days waiting)
+
+=== ШАГ 2: ИНСТРУМЕНТЫ ===
+get_customer_details("john@example.com")
+→ { customer_id: "c_123", name: "John Doe", account_type: "free" }
+
+get_order_history("c_123")
+→ { orders: [{ order_id: "ord_456", date: "3 days ago",
+              amount: 49.99, status: "completed", item: "Premium Plan" }] }
+
+check_known_issues(["premium", "access", "provisioning"])
+→ { known_issues: [{ issue_id: "iss_789",
+                     description: "Delayed Premium activation for some users",
+                     status: "investigating",
+                     workaround: "Manual activation available" }] }
+
+=== ШАГ 3: CUSTOMER RESEARCHER ===
+Research Report:
+{
+  customer_profile: {
+    name: "John Doe",
+    tenure: "2 years",
+    account_type: "free → premium (pending)",
+    lifetime_value: 49.99
+  },
+  issue: "Premium upgrade not activated after successful payment",
+  known_related_issue: "System experiencing delays in automatic upgrades",
+  recommended_approach: "Immediate manual activation + apology + compensation",
+  red_flags: ["3-day delay unacceptable", "Risk of churn"]
+}
+
+=== ШАГ 4: EMAIL COMPOSER (Empathetic tone) ===
+{
+  subject: "Your Premium Plan Activation - Immediate Resolution",
+
+  body: "
+    Dear John,
+
+    Thank you for reaching out, and I sincerely apologize for the delay in
+    activating your Premium plan. I can see that your payment was processed
+    successfully 3 days ago (Order #ord_456), and you should have had immediate
+    access.
+
+    I've personally escalated this to our technical team, and your Premium
+    features have now been manually activated. You should see full Premium
+    access within the next 15 minutes.
+
+    As an apology for this inconvenience, I've also added an additional month
+    to your Premium subscription at no charge.
+
+    To verify everything is working:
+    1. Log out of your account
+    2. Log back in
+    3. Check Settings > Subscription
+    4. You should see 'Premium - Active'
+
+    If you experience any further issues, please reply directly to this email
+    or call our Priority Support line at 1-800-XXX-XXXX (mention ticket #TKT123
+    for immediate assistance).
+
+    Thank you for your patience and for choosing our service.
+
+    Best regards,
+    Sarah Chen
+    Senior Customer Success Manager
+  ",
+
+  tone_analysis: "Empathetic with immediate action",
+  personalization_elements: [
+    "Used customer name",
+    "Referenced specific order #ord_456",
+    "Mentioned exact timeline (3 days)",
+    "Provided compensation",
+    "Gave direct priority support access"
+  ]
+}
+
+=== ВЫХОД ===
+{
+  needs_clarification: false,
+  clarification_questions: [],
+  email_response: { ... (см. выше) }
+}
+```
+
+### Особенности пайплайна
+
+1. **Контекстная осведомленность:** Учет истории клиента и предыдущих взаимодействий
+2. **Адаптивный тон:** Автоматический выбор тона на основе ситуации
+3. **Персонализация:** Использование конкретных деталей аккаунта
+4. **Проактивность:** Предвидение потребностей на основе исследования
+5. **Эскалация:** Автоматическое определение необходимости эскалации
+
+---
