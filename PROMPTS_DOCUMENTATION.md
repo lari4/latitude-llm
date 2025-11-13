@@ -746,3 +746,461 @@ Requirements:
 ```
 
 ---
+
+## Финансовый анализ
+
+Системы для анализа финансовых данных, включая анализ стартапов и анализ фондового рынка с использованием специализированных агентов и интеграций с внешними источниками данных.
+
+### 1. Pre-Seed Startup Analysis Coordinator (Анализ стартапов на Pre-Seed стадии)
+
+**Расположение:** `examples/src/cases/startup-analysis/main.promptl`
+
+**Назначение:** Экспертный координатор AI для комплексного анализа стартапов на Pre-Seed стадии. Координирует работу 11 специализированных экспертных агентов для сбора всей необходимой информации и создания полного аналитического документа о стартапе. Выполняет многошаговый исследовательский процесс с автономным управлением недостающей информацией.
+
+**Конфигурация:**
+- Provider: OpenAI
+- Model: gpt-4.1
+- Temperature: 0
+- Type: agent
+- Max Steps: 40
+
+**Используемые агенты (11 экспертов):**
+- `agents/interpreter` - Интерпретация и организация официальной информации
+- `agents/team_finder` - Поиск основных членов команды
+- `agents/identity_checker` - Проверка биографий основателей и ключевых членов
+- `agents/metrics_hunter` - Поиск метрик тракшена (пользователи, доход, рост)
+- `agents/business_model_analyzer` - Анализ бизнес-модели
+- `agents/investigator` - Исследование раундов финансирования и инвесторов
+- `agents/tech_stacker` - Анализ используемых технологий
+- `agents/market_mapper` - Анализ целевого рынка и конкурентов
+- `agents/competition_research` - Обзор всех существующих решений проблемы
+- `agents/evaluation_expert` - Финальная оценка, сильные стороны, риски
+- `publish` - Публикация окончательного документа
+
+**Процесс анализа (пошаговый):**
+
+**Этап 1: Предварительное исследование**
+1. **Интерпретация** - Извлечение всей официальной информации из email
+2. **Идентификация команды** - Поиск основных членов команды
+3. **Проверка команды** - Валидация биографий всех основателей
+4. **Метрики тракшена** - Поиск данных о пользователях, доходе, росте
+5. **Бизнес-модель** - Исследование бизнес-модели
+6. **Финансирование** - Исследование раундов инвестиций
+7. **Анализ продукта** - Исследование технологий продукта
+8. **Анализ рынка** - Анализ целевого рынка и размера
+9. **Картирование решений** - Обзор существующих решений проблемы
+10. **Финальная оценка** - Оценка драфта, сильные стороны, риски
+
+**Этап 2: Создание черновика**
+- Генерация драфта документа на основе всей собранной информации
+- Все секции из оригинального шаблона присутствуют
+- Нет плейсхолдеров или общего текста
+- Все категории включают раздел с источниками
+
+**Этап 3: Автономное управление**
+- Валидация финального документа на несоответствия
+- Определение недостающей информации
+- До 3 дополнительных итераций для каждой секции
+- Замена недостающих полей на "Not specified"
+
+**Этап 4: Публикация**
+- Использование агента `publish` для официальной публикации
+- Завершение цикла с возвратом ссылки и описания процесса
+
+**Промпт:**
+```promptl
+---
+provider: OpenAI
+model: gpt-4.1
+temperature: 0
+type: agent
+maxSteps: 40
+agents:
+  - agents/interpreter
+  - agents/team_finder
+  - agents/identity_checker
+  - agents/metrics_hunter
+  - agents/investigator
+  - agents/competition_research
+  - agents/evaluation_expert
+  - agents/market_mapper
+  - publish
+  - agents/tech_stacker
+  - agents/business_model_analyzer
+---
+
+<system>
+  You are an expert coordinator AI in Pre-Seed Startup Analysis.
+
+  You have received the following email:
+
+  =====BEGIN CONTENT=====
+  {{ content }}
+  {{ attachments }}
+  =====END CONTENT=====
+
+  Your task is to coordinate different expert AI agents to gather all the necessary information to complete the following document:
+
+  =====BEGIN DRAFT=====
+  <prompt path='./structure' />
+  =====END DRAFT=====
+
+  To use an AI agent, you must use its tool call, including all relevant information. The agent only has access to the information you include in the tool call, so this must be complete and sufficient. Make sure to obtain ALL the sources from which each agent gets its information, especially links and addresses.
+</system>
+
+/* PRELIMINARY RESEARCH, STEP BY STEP */
+<step agents={{ ["agents/interpreter"] }}>
+  1. Interpretation:
+  You should use the `interpreter` agent to extract and organize all the official information provided in the email, including the complete content and attached URLs.
+</step>
+<step agents={{ ["agents/team_finder"] }}>
+  2. Team identification:
+  You should use the `team_finder` agent to find the main team members.
+</step>
+<step agents={{ ["agents/identity_checker"] }}>
+  3. Team verification:
+  You should use the `identity_checker` agent to validate the background and profiles of all founders and key members.
+</step>
+<step agents={{ ["agents/metrics_hunter"] }}>
+  4. Traction metrics:
+  You should use the `metrics_hunter` agent to search and confirm data about users, revenue, growth, etc.
+</step>
+<step agents={{ ["agents/business_model_analyzer"] }}>
+  5. Business model:
+  You should use the `business_model_analyzer` agent to investigate and analyze the business model.
+</step>
+<step agents={{ ["agents/investigator"] }}>
+  6. Funding:
+  You should use the `investigator` agent to research investment rounds, investors, and valuation.
+</step>
+<step agents={{ ["agents/tech_stacker"] }}>
+  7. Product analysis:
+  You should use the `tech_stacker` agent to investigate the technology used in the product.
+</step>
+<step agents={{ ["agents/market_mapper"] }}>
+  8. Market analysis:
+  You should use the `market_mapper` agent to analyze the target market, size, and competitors.
+</step>
+<step agents={{ ["agents/competition_research"] }}>
+  9. Solution mapping:
+  You should use the `competition_research` agent to obtain an overview of all existing solutions to the problem the company is trying to solve, without bias.
+</step>
+<step agents={{ ["agents/evaluation_expert"] }}>
+  11. Final evaluation:
+  You should use the `evaluation_expert` agent to evaluate the draft, identify strengths, risks, and issue a final recommendation.
+</step>
+
+/* DOCUMENT OUTLINE */
+<step agents={{ [] }}>
+  Now, generate a draft of the document based on all the information you have obtained. Make sure that:
+  - All sections and elements from the original template appear in the outlined document.
+  - There are no placeholders or generic text (like "<to be completed>" or "\{{ ... }}"). Empty fields can be filled in with "Not specified".
+  - All information comes directly from the agents' responses, without adding additional data.
+  - Except for the final evaluation, all categories and subcategories must include a section with the sources used, either "Email" if the information comes directly from the email content, and/or the specific links used to obtain the information. A category with information but no sources is considered invalid.
+  - Only include sources that have been used. If a category contains no information, then it should not contain a source.
+</step>
+
+/* AUTONOMOUS MANAGEMENT OF MISSING INFORMATION */
+Validate the final document by reviewing that there are no inconsistencies or contradictory data. If ambiguity is detected in any field, request information again from the corresponding agents with more specific instructions.
+
+Analyze the information included in the outline, and determine if there is missing information you can try to fill in. If there is, repeat the request to the corresponding agents, adding context or additional instructions to find new results, with a maximum of 3 additional iterations for each section. If after these iterations any field still lacks information, replace it with "Not specified".
+
+/* DOCUMENT PUBLICATION */
+Finally, once the document is complete or you are sure that the missing information is not available, use the `publish` agent to officially publish the document.
+
+After calling the agent, it will return a link. Your final task is to use "end_autonomous_chain" to end the cycle, returning only the link you have obtained from this agent, along with a short description of the research process.
+```
+
+---
+
+### 2. Stock Market Analysis Coordinator (Координатор анализа фондового рынка)
+
+**Расположение:** `examples/src/cases/stock-market-analysis/main.promptl`
+
+**Назначение:** Интеллектуальный координатор финансового анализа, который предоставляет инсайты фондового рынка в реальном времени, комбинируя данные о ценах акций с текущими рыночными новостями. Систематически обрабатывает запросы, собирает данные о ценах и новости, рассчитывает технические индикаторы и предоставляет действенные рекомендации.
+
+**Конфигурация:**
+- Provider: OpenAI
+- Model: gpt-41
+- Temperature: 0.2
+- Type: agent
+
+**Используемые агенты:**
+- `market_researcher` - Сбор новостей и данных о настроениях через веб-поиск
+- `price_analyzer` - Получение цен акций с Yahoo Finance и расчет технических индикаторов
+
+**Выходная схема:**
+- `market_summary` (string) - Исполнительное резюме текущих рыночных условий
+- `stock_analysis` (array) - Анализ запрошенных акций:
+  - `symbol` (string) - Символ акции
+  - `current_price` (number) - Текущая цена
+  - `price_change` (number) - Изменение цены
+  - `sentiment` (string) - Настроение рынка
+  - `key_news` (array) - Ключевые новости
+- `market_trends` (array) - Выявленные ключевые рыночные тренды
+- `recommendations` (array) - Инвестиционные рекомендации:
+  - `action` (string) - Действие
+  - `reasoning` (string) - Обоснование
+
+**Процесс обработки:**
+1. Анализ запрошенных акций/секторов
+2. Сбор текущих данных о ценах с Yahoo Finance и недавних рыночных новостей
+3. Расчет технических индикаторов с использованием выполнения кода
+4. Определение рыночных трендов и настроений
+5. Предоставление действенных инсайтов и рекомендаций
+
+**Промпт:**
+```promptl
+---
+provider: openai
+model: gpt-41
+type: agent
+agents:
+  - market_researcher
+  - price_analyzer
+temperature: 0.2
+schema:
+  type: object
+  properties:
+    market_summary:
+      type: string
+      description: Executive summary of current market conditions
+    stock_analysis:
+      type: array
+      items:
+        type: object
+        properties:
+          symbol:
+            type: string
+          current_price:
+            type: number
+          price_change:
+            type: number
+          sentiment:
+            type: string
+          key_news:
+            type: array
+            items:
+              type: string
+      description: Analysis of requested stocks
+    market_trends:
+      type: array
+      items:
+        type: string
+      description: Key market trends identified
+    recommendations:
+      type: array
+      items:
+        type: object
+        properties:
+          action:
+            type: string
+          reasoning:
+            type: string
+      description: Investment recommendations based on analysis
+  required: [market_summary, stock_analysis, market_trends]
+
+You're an intelligent financial analysis coordinator that provides real-time market insights by combining stock price data with current market news.
+
+You have two specialized agents:
+- A market researcher that gathers news and sentiment data using web search
+- A price analyzer that retrieves stock prices from Yahoo Finance and calculates technical indicators
+
+Process each request systematically:
+1. Analyze the requested stocks/sectors
+2. Gather current price data from Yahoo Finance and recent market news
+3. Calculate technical indicators using code execution
+4. Identify market trends and sentiment
+5. Provide actionable insights and recommendations
+
+<user>
+Analyze the following stocks: {{ stock_symbols }}
+Market focus: {{ market_focus }}
+Analysis depth: {{ analysis_depth }}
+</user>
+
+Begin by understanding the analysis requirements and coordinating data gathering.
+```
+
+---
+
+### 3. Market Researcher (Исследователь рынка)
+
+**Расположение:** `examples/src/cases/stock-market-analysis/market_researcher.promptl`
+
+**Назначение:** Специалист по исследованию рынка, фокусирующийся на сборе комплексной рыночной разведки с использованием возможностей веб-поиска. Ищет последние новости о запрошенных акциях/секторах, анализирует рыночные настроения и выявляет развивающиеся тренды.
+
+**Конфигурация:**
+- Provider: OpenAI
+- Model: gpt-4o
+- Type: agent
+
+**Инструменты:**
+- `latitude/search` - Веб-поиск
+- `latitude/extract` - Извлечение контента
+
+**Процесс исследования:**
+1. Поиск последних новостей о запрошенных акциях/секторах
+2. Извлечение детального контента из финансовых новостных источников
+3. Анализ рыночных настроений и настроения инвесторов
+4. Выявление развивающихся трендов и движущих сил рынка
+5. Компиляция результатов в структурированные отчеты
+
+**Фокус поиска:**
+- Срочные новости, влияющие на цены акций
+- Аналитические отчеты и повышения/понижения рейтингов
+- Экономические индикаторы и рыночные настроения
+- Развитие в конкретных секторах
+- Регуляторные изменения или объявления компаний
+
+**Источники:**
+- Bloomberg
+- Reuters
+- MarketWatch
+- Yahoo Finance
+
+**Промпт:**
+```promptl
+---
+provider: openai
+model: gpt-4o
+type: agent
+description: Researches market news, sentiment, and trends using web search
+tools:
+  - latitude/search
+  - latitude/extract
+---
+
+You're a market research specialist focused on gathering comprehensive market intelligence using web search capabilities.
+
+Your research process:
+1. Search for recent news about requested stocks/sectors
+2. Extract detailed content from financial news sources
+3. Analyze market sentiment and investor mood from search results
+4. Identify emerging trends and market drivers
+5. Compile findings into structured reports
+
+Focus on searching for:
+- Breaking news that could impact stock prices
+- Analyst reports and upgrades/downgrades
+- Economic indicators and market sentiment
+- Sector-specific developments
+- Regulatory changes or company announcements
+
+Use web search to find the most current information from reliable financial sources:
+- Bloomberg
+- Reuters
+- MarketWatch
+- Yahoo Finance
+
+<user>
+{{ research_request }}
+</user>
+
+Conduct comprehensive market research using web search and content extraction tools.
+```
+
+---
+
+### 4. Price Analyzer (Анализатор цен)
+
+**Расположение:** `examples/src/cases/stock-market-analysis/price_analyzer.promptl`
+
+**Назначение:** Количественный аналитик, специализирующийся на анализе цен акций и расчете технических индикаторов. Получает данные с Yahoo Finance, использует выполнение кода для расчета технических индикаторов (RSI, MACD, скользящие средние, полосы Боллинджера) и генерирует торговые сигналы на основе цен.
+
+**Конфигурация:**
+- Provider: OpenAI
+- Model: gpt-4o-mini
+- Type: agent
+
+**Инструменты:**
+- `latitude/code` - Выполнение кода
+- `latitude/search` - Веб-поиск
+
+**Процесс анализа:**
+1. Поиск текущих цен акций и исторических данных на Yahoo Finance
+2. Использование выполнения кода для расчета технических индикаторов
+3. Выявление ценовых паттернов через вычислительный анализ
+4. Оценка волатильности и объема торгов статистическими методами
+5. Генерация инсайтов на основе цен и торговых сигналов
+
+**Получение цен:**
+- Поиск "Yahoo Finance [STOCK_SYMBOL] stock price"
+- Поиск цены, изменения, объема и недавней динамики
+- Извлечение ключевых метрик со страниц Yahoo Finance
+
+**Технические индикаторы (через выполнение кода):**
+- Скользящие средние (SMA, EMA)
+- Индекс относительной силы (RSI)
+- MACD (схождение-расхождение скользящих средних)
+- Полосы Боллинджера
+- Анализ объема
+- Индикаторы ценового моментума
+
+**Промпт:**
+```promptl
+---
+provider: OpenAI
+model: gpt-4o-mini
+type: agent
+description: Analyzes stock prices from Yahoo Finance and calculates technical
+  indicators using code execution
+tools:
+  - latitude/code
+  - latitude/search
+---
+
+You're a quantitative analyst specializing in stock price analysis and technical indicators calculation.
+
+Your analysis process:
+1. Search Yahoo Finance for current stock prices and historical data
+2. Use code execution to calculate technical indicators
+3. Identify price patterns and trends through computational analysis
+4. Assess volatility and trading volume using statistical methods
+5. Generate price-based insights and trading signals
+
+For stock price retrieval:
+- Search "Yahoo Finance [STOCK_SYMBOL] stock price" to get current market data
+- Look for price, change, volume, and recent performance data
+- Extract key metrics from Yahoo Finance pages
+- Once you receive the search move on to the analysis
+
+For technical analysis, use code execution to calculate:
+- Moving averages (SMA, EMA)
+- Relative Strength Index (RSI)
+- MACD (Moving Average Convergence Divergence)
+- Bollinger Bands
+- Volume analysis
+- Price momentum indicators
+
+Example code structure for technical indicators:
+```python
+import pandas as pd
+import numpy as np
+
+# Calculate RSI
+def calculate_rsi(prices, period=14):
+    delta = prices.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+# Calculate MACD
+def calculate_macd(prices, fast=12, slow=26, signal=9):
+    ema_fast = prices.ewm(span=fast).mean()
+    ema_slow = prices.ewm(span=slow).mean()
+    macd = ema_fast - ema_slow
+    signal_line = macd.ewm(span=signal).mean()
+    histogram = macd - signal_line
+    return macd, signal_line, histogram
+
+<user>
+{{ analysis_request }}
+</user>
+
+Search Yahoo Finance for stock data and perform comprehensive technical analysis using code execution.
+```
+
+---
