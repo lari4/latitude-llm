@@ -1204,3 +1204,320 @@ Search Yahoo Finance for stock data and perform comprehensive technical analysis
 ```
 
 ---
+
+## Системы оценки (LLM-as-a-Judge)
+
+Автоматизированные системы оценки качества AI-ответов с использованием LLM в качестве судьи. Эти промпты используются для оценки выходных данных других LLM моделей по различным критериям.
+
+### 1. Binary Evaluation (Бинарная оценка)
+
+**Расположение:** `packages/core/src/services/evaluationsV2/llm/binary.ts`
+
+**Назначение:** Оценивает, соответствует ли ответ AI заданным критериям с бинарным результатом (passed/failed). Используется для простых проверок качества типа "прошел/не прошел". LLM анализирует ответ другой модели и выносит вердикт true/false на основе заданных критериев.
+
+**Параметры конфигурации:**
+- `criteria` (string) - Критерии оценки (обязательно)
+- `passDescription` (string) - Описание того, что означает "прошел" (обязательно)
+- `failDescription` (string) - Описание того, что означает "не прошел" (обязательно)
+- `provider` - AI провайдер для оценки
+- `model` - Модель для оценки
+- `reverseScale` (boolean) - Обратная шкала оценки
+- `actualOutput` - Фактический выход для оценки
+- `expectedOutput` - Ожидаемый выход (опционально)
+
+**Выходная схема:**
+- `passed` (boolean) - true если ответ соответствует критериям
+- `reason` (string) - Объяснение решения оценки
+
+**Шаблон промпта:**
+```typescript
+---
+provider: ${provider.name}
+model: ${model}
+temperature: ${model.toLowerCase().startsWith('gpt-5') ? 1 : 0.7}
+---
+
+You're an expert LLM-as-a-judge evaluator. Your task is to judge whether the response, from another LLM model (the assistant), meets the following criteria:
+${criteria}
+
+The resulting verdict is `true` if the response meets the criteria, `false` otherwise, where:
+- `true` represents "${passDescription}"
+- `false` represents "${failDescription}"
+
+<user>
+  Based on the given instructions, evaluate the assistant response:
+  ```
+  {{ actualOutput }}
+  ```
+
+  For context, here is the full conversation:
+  ```
+  {{ conversation }}
+  ```
+
+  {{ if toolCalls?.length }}
+    Also, here are the tool calls that the assistant requested:
+    ```
+    {{ toolCalls }}
+    ```
+  {{ else }}
+    Also, the assistant did not request any tool calls.
+  {{ endif }}
+
+  Finally, here is some additional metadata about the conversation:
+  - Cost: {{ cost }} cents.
+  - Tokens: {{ tokens }} tokens.
+  - Duration: {{ duration }} seconds.
+</user>
+
+You must give your verdict as a single JSON object with the following properties:
+- passed (boolean): `true` if the response meets the criteria, `false` otherwise.
+- reason (string): A string explaining your evaluation decision.
+```
+
+---
+
+### 2. Rating Evaluation (Оценка по шкале)
+
+**Расположение:** `packages/core/src/services/evaluationsV2/llm/rating.ts`
+
+**Назначение:** Оценивает ответ AI по числовой шкале между минимальным и максимальным рейтингом. Используется для более детальной оценки качества с градуированной шкалой. Позволяет настраивать диапазон оценки и пороговые значения.
+
+**Параметры конфигурации:**
+- `criteria` (string) - Критерии оценки (обязательно)
+- `minRating` (number) - Минимальный рейтинг
+- `minRatingDescription` (string) - Описание минимального рейтинга (обязательно)
+- `maxRating` (number) - Максимальный рейтинг
+- `maxRatingDescription` (string) - Описание максимального рейтинга (обязательно)
+- `minThreshold` (number) - Минимальный порог (опционально)
+- `maxThreshold` (number) - Максимальный порог (опционально)
+- `provider` - AI провайдер
+- `model` - Модель
+- `reverseScale` (boolean) - Обратная шкала
+
+**Валидация:**
+- minRating < maxRating
+- minThreshold между minRating и maxRating
+- maxThreshold между minRating и maxRating
+- minThreshold < maxThreshold
+
+**Выходная схема:**
+- `rating` (integer) - Целое число между minRating и maxRating
+- `reason` (string) - Объяснение решения оценки
+
+**Шаблон промпта:**
+```typescript
+---
+provider: ${provider.name}
+model: ${model}
+temperature: ${model.toLowerCase().startsWith('gpt-5') ? 1 : 0.7}
+---
+
+You're an expert LLM-as-a-judge evaluator. Your task is to judge whether the response, from another LLM model (the assistant), meets the following criteria:
+${criteria}
+
+The resulting verdict is an integer number between `${minRating}`, if the response does not meet the criteria, and `${maxRating}` otherwise, where:
+- `${minRating}` represents "${minRatingDescription}"
+- `${maxRating}` represents "${maxRatingDescription}"
+
+<user>
+  Based on the given instructions, evaluate the assistant response:
+  ```
+  {{ actualOutput }}
+  ```
+
+  For context, here is the full conversation:
+  ```
+  {{ conversation }}
+  ```
+
+  {{ if toolCalls?.length }}
+    Also, here are the tool calls that the assistant requested:
+    ```
+    {{ toolCalls }}
+    ```
+  {{ else }}
+    Also, the assistant did not request any tool calls.
+  {{ endif }}
+
+  Finally, here is some additional metadata about the conversation:
+  - Cost: {{ cost }} cents.
+  - Tokens: {{ tokens }} tokens.
+  - Duration: {{ duration }} seconds.
+</user>
+
+You must give your verdict as a single JSON object with the following properties:
+- rating (number): An integer number between `${minRating}` and `${maxRating}`.
+- reason (string): A string explaining your evaluation decision.
+```
+
+---
+
+### 3. Comparison Evaluation (Сравнительная оценка)
+
+**Расположение:** `packages/core/src/services/evaluationsV2/llm/comparison.ts`
+
+**Назначение:** Сравнивает ответ AI с ожидаемым выходом и оценивает качество совпадения по шкале от 0 до 100. Используется когда есть эталонный ответ для сравнения. Оценивает, насколько хорошо фактический ответ соответствует ожидаемому.
+
+**Параметры конфигурации:**
+- `criteria` (string) - Критерии сравнения (обязательно)
+- `passDescription` (string) - Описание хорошего совпадения (обязательно)
+- `failDescription` (string) - Описание плохого совпадения (обязательно)
+- `minThreshold` (number) - Минимальный порог (0-100, опционально)
+- `maxThreshold` (number) - Максимальный порог (0-100, опционально)
+- `provider` - AI провайдер
+- `model` - Модель
+- `reverseScale` (boolean) - Обратная шкала
+- `expectedOutput` (string) - Ожидаемый выход для сравнения
+
+**Валидация:**
+- minThreshold между 0 и 100
+- maxThreshold между 0 и 100
+- minThreshold < maxThreshold
+
+**Выходная схема:**
+- `score` (integer) - Оценка от 0 до 100
+- `reason` (string) - Объяснение решения оценки
+
+**Шаблон промпта:**
+```typescript
+---
+provider: ${provider.name}
+model: ${model}
+temperature: ${model.toLowerCase().startsWith('gpt-5') ? 1 : 0.7}
+---
+
+You're an expert LLM-as-a-judge evaluator. Your task is to judge how well the response, from another LLM model (the assistant), compares to the expected output, following the criteria:
+${criteria}
+
+This is the expected output to compare against:
+```
+{{ expectedOutput }}
+```
+
+The resulting verdict is an integer number between `0`, if the response compares poorly to the expected output, and `100` otherwise, where:
+- `0` represents "${failDescription}"
+- `100` represents "${passDescription}"
+
+<user>
+  Based on the given instructions, evaluate the assistant response:
+  ```
+  {{ actualOutput }}
+  ```
+
+  For context, here is the full conversation:
+  ```
+  {{ conversation }}
+  ```
+
+  {{ if toolCalls?.length }}
+    Also, here are the tool calls that the assistant requested:
+    ```
+    {{ toolCalls }}
+    ```
+  {{ else }}
+    Also, the assistant did not request any tool calls.
+  {{ endif }}
+
+  Finally, here is some additional metadata about the conversation:
+  - Cost: {{ cost }} cents.
+  - Tokens: {{ tokens }} tokens.
+  - Duration: {{ duration }} seconds.
+</user>
+
+You must give your verdict as a single JSON object with the following properties:
+- score (number): An integer number between `0` and `100`.
+- reason (string): A string explaining your evaluation decision.
+```
+
+---
+
+### 4. Custom Evaluation (Кастомная оценка)
+
+**Расположение:** `packages/core/src/services/evaluationsV2/llm/custom.ts`
+
+**Назначение:** Позволяет пользователям создавать полностью кастомные промпты для оценки с гибкой выходной схемой. Используется для специализированных случаев оценки, не покрываемых стандартными типами.
+
+**Доступные параметры для промпта:**
+- `actualOutput` - Фактический выход для оценки
+- `expectedOutput` - Ожидаемый выход
+- `conversation` - Полная история разговора
+- `cost` - Стоимость вызова в центах
+- `tokens` - Количество токенов
+- `duration` - Продолжительность в секундах
+- `messages` - Сообщения разговора
+- `toolCalls` - Вызовы инструментов
+- `prompt` - Оригинальный промпт
+- `config` - Конфигурация
+- `parameters` - Параметры
+- `context` - Контекст
+- `response` - Ответ
+
+**Документация:** Константа `LLM_EVALUATION_CUSTOM_PROMPT_DOCUMENTATION` содержит полную документацию доступных переменных для пользовательских промптов.
+
+---
+
+## Примеры SDK и тестовые промпты
+
+Приложение содержит 10 примеров промптов для демонстрации различных возможностей SDK:
+
+### SDK Examples
+- **Product Description Generator** (`examples/src/sdk/run-prompt/example.promptl`) - Генератор описаний продуктов с параметрами
+- **Weather Clothing Recommender** (`examples/src/sdk/run-prompt-with-tools/example.promptl`) - Рекомендации одежды с инструментом get_weather
+- **Q&A Assistant with RAG** (`examples/src/sdk/rag-retrieval/example.promptl`) - Q&A ассистент с инструментом get_answer
+- **Multi-step Reasoning Chain** (`examples/src/sdk/render-chain/example.promptl`) - Многошаговый промпт с блоками <step>
+- **Travel Itinerary Generator** (`examples/src/sdk/pause-tools/example.promptl`) - Генератор маршрутов с фоновыми задачами
+- **Documentation Examples** (`examples/src/sdk/get-prompt/example.promptl`, `create-log/example.promptl`, `annotate-log/example.promptl`) - Примеры для документации SDK
+
+---
+
+## Сервисы AI интеграции
+
+Приложение включает обширную инфраструктуру для интеграции с различными AI провайдерами:
+
+### Основные сервисы
+**Файл:** `packages/core/src/services/ai/index.ts`
+- Фильтрация и валидация сообщений
+- Выбор и конфигурация провайдеров
+- Применение правил для различных LLM провайдеров
+- Построение инструментов и обработка схем
+- Потоковая генерация текста с Vercel AI SDK
+
+### Поддерживаемые провайдеры
+- **OpenAI** - GPT-4.1, GPT-4o, GPT-4o-mini
+- **Anthropic** - Claude 3.5 Sonnet, Claude 3 Sonnet
+- **Google** - Gemini 1.5 Flash, Gemini Pro (через Vertex AI)
+- **Perplexity** - Perplexity модели
+- **Groq** - Быстрые inference модели
+- **DeepSeek** - DeepSeek модели
+- **Mistral** - Mistral AI модели
+- **xAI** - Grok модели
+- **Amazon Bedrock** - Claude через AWS
+- **Custom** - Поддержка кастомных провайдеров
+
+### Конвертеры сообщений
+- `convertLatitudeMessagesToVercelFormat.ts` - Конвертация внутреннего формата в Vercel SDK
+- `promptlAdapter.ts` - Адаптер для PromptL-AI библиотеки
+
+### Расчет стоимости
+Отдельные модули для расчета стоимости каждого провайдера:
+- `estimateCost/anthropic.ts`, `openai.ts`, `google.ts`, и т.д.
+
+### Правила провайдеров
+Файлы в `packages/core/src/services/ai/providers/rules/`:
+- Валидация сообщений для каждого провайдера
+- `enforceAllSystemMessagesFirst.ts` - Обеспечение порядка системных сообщений
+
+---
+
+## Заключение
+
+Документация охватывает все основные промпты приложения Latitude LLM:
+- **4 промпта** модерации контента (многоагентная система)
+- **4 промпта** поддержки клиентов (исследование и email)
+- **4 промпта** финансового анализа (стартапы и фондовый рынок)
+- **4 промпта** систем оценки (binary, rating, comparison, custom)
+- **10 примеров** SDK промптов
+- Инфраструктура для **10+ AI провайдеров**
+
+Всего: **25+ документированных промптов** и полная инфраструктура AI интеграции.
